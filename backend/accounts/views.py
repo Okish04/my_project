@@ -1,50 +1,95 @@
-from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from django.core.mail import send_mail  # Adjust as per your email backend
-from django.contrib.auth.models import User
-from django.http import JsonResponse
+from django.core.mail import send_mail
+from rest_framework.exceptions import AuthenticationFailed
+from .serializers import UserSerializer
+from .models import User
+import jwt, datetime
 
-class ForgotPasswordView(APIView):
-    def post(self, request, *args, **kwargs):
-        email = request.data.get('email')
-        if not email:
-            return JsonResponse({"error": "Email is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Implement password reset logic (e.g., send email with reset link)
-        send_mail(
-            'Password Reset Request',
-            'Please follow the instructions to reset your password.',
-            'from@example.com',
-            [email],
-            fail_silently=False,
-      )
-        
-        return JsonResponse({"message": "Password reset email sent"}, status=status.HTTP_200_OK)
 
+# Create your views here.
 class SignupView(APIView):
-    def post(self, request, *args, **kwargs):
+    def post(self, request):
+        serializer = UserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class LoginView(APIView):
+    def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
-        if not email or not password:
-            return JsonResponse({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Check if user already exists
-        if User.objects.filter(email=email).exists():
-            return JsonResponse({"error": "User already exists"}, status=status.HTTP_400_BAD_REQUEST)
-        
-    # Create the user
-        user = User.objects.create_user(username=email, email=email, password=password)
-        
-        return JsonResponse({"message": "User registered successfully"}, status=status.HTTP_201_CREATED)
 
-def logout_view(request):
-    from rest_framework_simplejwt.tokens import RefreshToken
-    try:
-        refresh_token = request.data.get('refresh')
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-        return JsonResponse({"detail": "Logout successful"}, status=status.HTTP_205_RESET_CONTENT)
-    except Exception as e:
-        return JsonResponse({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.filter(email=email).first()
+
+        if user is None:
+            raise AuthenticationFailed('User not found!')
+
+        if not user.check_password(password):
+            raise AuthenticationFailed('Incorrect password!')
+
+        payload = {
+            'id': user.id,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=60),
+            'iat': datetime.datetime.utcnow()
+        }
+        token = jwt.encode(payload, 'secret', algorithm='HS256')
+        response = Response({
+            'message': 'Login successful',  # Success message
+            'user_id': user.id,  # Optionally include the user ID or any other relevant data
+        })
+        # Set the JWT token as a secure, HttpOnly cookie
+        response.set_cookie(key='jwt', value=token, httponly=True)
+        return response
+
+
+class UserView(APIView):
+    def get(self, request):
+        token = request.COOKIES.get('jwt')
+
+        if not token:
+            raise AuthenticationFailed('Unauthenticated!')
+
+        try:
+            # Correct 'algorithms' should be a list of algorithms
+            payload = jwt.decode(token, 'secret', algorithms=['HS256'])
+        except jwt.ExpiredSignatureError:
+            raise AuthenticationFailed('Unauthenticated!')
+
+        user = User.objects.filter(id=payload['id']).first()
+        serializer = UserSerializer(user)
+        return Response(serializer.data)
+
+class ForgotPasswordView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+
+        if not email:
+            raise AuthenticationFailed('Email is required.')
+
+        user = User.objects.filter(email=email).first()
+
+        if not user:
+            raise AuthenticationFailed('User with this email does not exist.')
+
+        # Here you would generate a password reset link, token, etc.
+        reset_link = f"http://localhost:8000/reset-password/{user.id}"
+
+        send_mail(
+            'Password Reset Request',
+            f'Please click the link to reset your password: {reset_link}',
+            'noreply@example.com',
+            [email],
+            fail_silently=False,
+        )
+        return Response({"message": "Password reset link has been sent."})
+
+class LogoutView(APIView):
+    def post(self, request):
+        response = Response()
+        response.delete_cookie('jwt')
+        response.data = {
+            'message': 'success'
+        }
+        return response

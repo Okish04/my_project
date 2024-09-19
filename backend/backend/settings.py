@@ -53,8 +53,15 @@ MIDDLEWARE = [
     'corsheaders.middleware.corsMiddleware',
 ]
 
-CORS_ALLOWED_ORIGINS = ['http://localhost:3000']
 
+AUTH_USER_MODEL = 'accounts.User'
+CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOW_CREDENTIALS = True
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
 ROOT_URLCONF = 'backend.urls'
 
 TEMPLATES = [
@@ -81,8 +88,10 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'auth_app',
+        'USER': 'root',
+        'PASSWORD':'',
     }
 }
 
