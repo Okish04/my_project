@@ -93,6 +93,8 @@ DATABASES = {
         'NAME': 'auth_app',
         'USER': 'root',
         'PASSWORD':'',
+        'HOST': 'localhost',           # Database server host, 'localhost' if on the same machine
+        'PORT': '3306',
     }
 }
 
